@@ -1,5 +1,6 @@
 
 import pytest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from main import app
@@ -99,6 +100,34 @@ def test_invalid_email():
             "description": "I cannot access my account after resetting my password.",
             "priority": "high",
         },
+    )
+
+    assert response.status_code == 422
+
+def test_sentiment_endpoint():
+    with patch(
+        "main.analyze_sentiment",
+        return_value={"sentiment": "positive", "score": 0.95},
+    ):
+        response = client.post(
+            "/sentiment",
+            json={
+                "text": "The support team solved my problem quickly."
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "text": "The support team solved my problem quickly.",
+        "sentiment": "positive",
+        "score": 0.95,
+    }
+
+
+def test_sentiment_endpoint_rejects_empty_text():
+    response = client.post(
+        "/sentiment",
+        json={"text": ""},
     )
 
     assert response.status_code == 422

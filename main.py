@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 
 from database import create_tables, get_connection
-
+from sentiment_service import analyze_sentiment
 app = FastAPI(
     title="Customer Support API",
     description="An API for managing customer support tickets.",
@@ -37,6 +37,9 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     status: TicketStatus
 
+class SentimentRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+
 
 @app.get("/")
 def home():
@@ -49,6 +52,16 @@ def home():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.post("/sentiment")
+def predict_sentiment(request: SentimentRequest):
+    result = analyze_sentiment(request.text)
+
+    return {
+        "text": request.text,
+        "sentiment": result["sentiment"],
+        "score": result["score"],
+    }
 
 
 @app.post("/tickets", status_code=status.HTTP_201_CREATED)
