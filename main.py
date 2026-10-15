@@ -53,15 +53,23 @@ def home():
 def health_check():
     return {"status": "healthy"}
 
+
 @app.post("/sentiment")
 def predict_sentiment(request: SentimentRequest):
-    result = analyze_sentiment(request.text)
+    try:
+        result = analyze_sentiment(request.text)
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Sentiment analysis is temporarily unavailable.",
+        )
 
     return {
         "text": request.text,
         "sentiment": result["sentiment"],
         "score": result["score"],
     }
+
 
 
 @app.post("/tickets", status_code=status.HTTP_201_CREATED)

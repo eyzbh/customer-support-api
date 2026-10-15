@@ -3,15 +3,19 @@
 classifier = pipeline("sentiment-analysis")
 
 
-def analyze_sentiment(text: str) -> dict:
-    """Analyze text and return its predicted sentiment."""
-    result = classifier(text)[0]
 
-    return {
-        "text": text,
-        "sentiment": result["label"],
-        "score": round(result["score"], 4),
-    }
+def analyze_sentiment(text: str) -> dict:
+    """Classify text as positive, neutral, or negative."""
+    try:
+        result = classifier(text)[0]
+
+        return {
+            "sentiment": result["label"],
+            "score": round(result["score"], 4),
+        }
+    except Exception as exc:
+        raise RuntimeError("Sentiment analysis failed.") from exc
+
 
 
 if __name__ == "__main__":

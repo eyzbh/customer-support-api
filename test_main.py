@@ -131,3 +131,18 @@ def test_sentiment_endpoint_rejects_empty_text():
     )
 
     assert response.status_code == 422
+
+def test_sentiment_endpoint_handles_model_failure():
+    with patch(
+        "main.analyze_sentiment",
+        side_effect=RuntimeError("Sentiment analysis failed."),
+    ):
+        response = client.post(
+            "/sentiment",
+            json={"text": "The service was helpful."},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Sentiment analysis is temporarily unavailable."
+    }
