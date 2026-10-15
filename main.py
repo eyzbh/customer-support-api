@@ -54,7 +54,26 @@ def health_check():
     return {"status": "healthy"}
 
 
-@app.post("/sentiment")
+
+@app.post(
+    "/sentiment",
+    summary="Analyze text sentiment",
+    description=(
+        "Classify text as positive, neutral, or negative "
+        "using a pretrained Transformer model. "
+        "Returns the predicted sentiment and its confidence score."
+    ),
+    response_description="The predicted sentiment and score.",
+    responses={
+        503: {
+            "description": (
+                "Sentiment analysis is temporarily unavailable "
+                "because model inference failed."
+            )
+        }
+    },
+)
+
 def predict_sentiment(request: SentimentRequest):
     try:
         result = analyze_sentiment(request.text)
