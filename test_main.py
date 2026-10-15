@@ -1,0 +1,104 @@
+
+import pytest
+from fastapi.testclient import TestClient
+
+from main import app
+from database import get_connection
+
+client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clean_database():
+    with get_connection() as connection:
+        connection.execute("DELETE FROM tickets")
+        connection.execute(
+            "DELETE FROM sqlite_sequence WHERE name = 'tickets'"
+        )
+
+
+def test_health_check():
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+
+
+def test_create_ticket():
+    response = client.post(
+        "/tickets",
+        json={
+            "customer_name": "Abebe Bekele",
+            "email": "abebe@example.com",
+            "subject": "Cannot log in",
+            "description": "I cannot access my account after resetting my password.",
+            "priority": "high",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == 1
+    assert response.json()["status"] == "open"
+
+
+def test_get_ticket():
+    create_response = client.post(
+        "/tickets",
+        json={
+            "customer_name": "Abebe Bekele",
+            "email": "abebe@example.com",
+            "subject": "Cannot log in",
+            "description": "I cannot access my account after resetting my password.",
+            "priority": "high",
+        },
+    )
+
+    ticket_id = create_response.json()["id"]
+    response = client.get(f"/tickets/{ticket_id}")
+
+    assert response.status_code == 200
+    assert response.json()["customer_name"] == "Abebe Bekele"
+
+
+def test_close_ticket():
+    create_response = client.post(
+        "/tickets",
+        json={
+            "customer_name": "Abebe Bekele",
+            "email": "abebe@example.com",
+            "subject": "Cannot log in",
+            "description": "I cannot access my account after resetting my password.",
+            "priority": "high",
+        },
+    )
+
+    ticket_id = create_response.json()["id"]
+    response = client.patch(
+        f"/tickets/{ticket_id}",
+        json={"status": "closed"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "closed"
+
+
+def test_get_missing_ticket():
+    response = client.get("/tickets/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ticket not found"
+
+
+def test_invalid_email():
+    response = client.post(
+        "/tickets",
+        json={
+            "customer_name": "Abebe Bekele",
+            "email": "not-an-email",
+            "subject": "Cannot log in",
+            "description": "I cannot access my account after resetting my password.",
+            "priority": "high",
+        },
+    )
+
+    assert response.status_code == 422

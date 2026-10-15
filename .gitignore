@@ -1,0 +1,21 @@
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# Local database
+support.db
+support.db-journal
+support.db-wal
+support.db-shm
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Editor settings
+.vscode/
