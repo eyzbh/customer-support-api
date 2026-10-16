@@ -1,15 +1,23 @@
+from typing import Literal
 
 import ollama
 from pydantic import BaseModel, Field
 
 
 class TicketAnalysis(BaseModel):
-    category: str = Field(
+    category: Literal[
+        "billing",
+        "technical_support",
+        "account_access",
+        "other",
+    ] = Field(
         description="The category of the customer's support issue."
     )
-    priority: str = Field(
-        description="The urgency of the support issue: low, medium, or high."
+
+    priority: Literal["low", "medium", "high"] = Field(
+        description="The urgency of the support issue."
     )
+
     suggested_reply: str = Field(
         description="A helpful reply to the customer."
     )
