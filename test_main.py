@@ -193,3 +193,11 @@ def test_analyze_ticket_rejects_empty_message():
     )
 
     assert response.status_code == 422
+
+def test_analyze_ticket_rejects_message_over_5000_characters():
+    response = client.post(
+        "/analyze-ticket",
+        json={"message": "a" * 5001},
+    )
+
+    assert response.status_code == 422
