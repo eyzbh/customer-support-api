@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 from database import get_connection
+from pydantic import ValidationError
 
 client = TestClient(app)
 
@@ -201,3 +202,13 @@ def test_analyze_ticket_rejects_message_over_5000_characters():
     )
 
     assert response.status_code == 422
+
+def test_ticket_analysis_rejects_invalid_priority():
+    from ticket_analyzer import TicketAnalysis
+
+    with pytest.raises(ValidationError):
+        TicketAnalysis(
+            category="billing",
+            priority="urgent",
+            suggested_reply="We will investigate the issue.",
+        )
