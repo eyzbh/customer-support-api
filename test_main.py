@@ -171,8 +171,7 @@ def test_analyze_ticket_endpoint():
         "suggested_reply": "We will review the duplicate charge.",
     }
 
-
-def test_analyze_ticket_handles_model_failure():
+def test_analyze_ticket_handles_model_failure(caplog):
     with patch(
         "main.analyze_ticket",
         side_effect=RuntimeError("Local model failed."),

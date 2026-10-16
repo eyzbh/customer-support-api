@@ -1,5 +1,6 @@
 
 from enum import Enum
+import logging
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
@@ -7,6 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from database import create_tables, get_connection
 from sentiment_service import analyze_sentiment
 from ticket_analyzer import analyze_ticket
+logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Customer Support API",
     description="An API for managing customer support tickets.",
@@ -104,6 +106,7 @@ def analyze_support_ticket(request: TicketAnalysisRequest):
     try:
         result = analyze_ticket(request.message)
     except Exception:
+        logger.exception("Ticket analysis failed.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Ticket analysis is temporarily unavailable.",
