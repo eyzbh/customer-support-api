@@ -185,3 +185,11 @@ def test_analyze_ticket_handles_model_failure():
     assert response.json() == {
         "detail": "Ticket analysis is temporarily unavailable."
     }
+
+def test_analyze_ticket_rejects_empty_message():
+    response = client.post(
+        "/analyze-ticket",
+        json={"message": ""},
+    )
+
+    assert response.status_code == 422
