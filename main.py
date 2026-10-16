@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from database import create_tables, get_connection
 from sentiment_service import analyze_sentiment
+from ticket_analyzer import analyze_ticket
 app = FastAPI(
     title="Customer Support API",
     description="An API for managing customer support tickets.",
@@ -39,7 +40,8 @@ class TicketUpdate(BaseModel):
 
 class SentimentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
-
+class TicketAnalysisRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=5000)
 
 @app.get("/")
 def home():
@@ -90,7 +92,24 @@ def predict_sentiment(request: SentimentRequest):
     }
 
 
+@app.post(
+    "/analyze-ticket",
+    responses={
+        503: {
+            "description": "The local AI model is temporarily unavailable."
+        }
+    },
+)
+def analyze_support_ticket(request: TicketAnalysisRequest):
+    try:
+        result = analyze_ticket(request.message)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ticket analysis is temporarily unavailable.",
+        )
 
+    return result
 @app.post("/tickets", status_code=status.HTTP_201_CREATED)
 def create_ticket(ticket: TicketCreate):
     with get_connection() as connection:

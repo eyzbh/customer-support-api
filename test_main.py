@@ -146,3 +146,42 @@ def test_sentiment_endpoint_handles_model_failure():
     assert response.json() == {
         "detail": "Sentiment analysis is temporarily unavailable."
     }
+
+def test_analyze_ticket_endpoint():
+    with patch(
+        "main.analyze_ticket",
+        return_value={
+            "category": "billing",
+            "priority": "high",
+            "suggested_reply": "We will review the duplicate charge.",
+        },
+    ):
+        response = client.post(
+            "/analyze-ticket",
+            json={
+                "message": "I was charged twice for my subscription."
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "category": "billing",
+        "priority": "high",
+        "suggested_reply": "We will review the duplicate charge.",
+    }
+
+
+def test_analyze_ticket_handles_model_failure():
+    with patch(
+        "main.analyze_ticket",
+        side_effect=RuntimeError("Local model failed."),
+    ):
+        response = client.post(
+            "/analyze-ticket",
+            json={"message": "I cannot access my account."},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Ticket analysis is temporarily unavailable."
+    }
