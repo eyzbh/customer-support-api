@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from database import create_tables, get_connection
 from sentiment_service import analyze_sentiment
 from ticket_analyzer import analyze_ticket
+from rag_service import answer_question
 logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Customer Support API",
@@ -44,7 +45,8 @@ class SentimentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
 class TicketAnalysisRequest(BaseModel):
     message: str = Field(min_length=1, max_length=5000)
-
+class KnowledgeQuestionRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=5000)
 @app.get("/")
 def home():
     return {
@@ -110,6 +112,25 @@ def analyze_support_ticket(request: TicketAnalysisRequest):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Ticket analysis is temporarily unavailable.",
+        )
+
+    return result
+@app.post(
+    "/ask-knowledge",
+    responses={
+        503: {
+            "description": "The local RAG service is temporarily unavailable."
+        }
+    },
+)
+def ask_knowledge(request: KnowledgeQuestionRequest):
+    try:
+        result = answer_question(request.question)
+    except Exception:
+        logger.exception("Knowledge question failed.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Knowledge service is temporarily unavailable.",
         )
 
     return result
