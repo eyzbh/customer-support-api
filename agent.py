@@ -12,7 +12,7 @@ MAX_TOOL_ROUNDS = 5
 
 
 def request_ticket_closure(ticket_id: int) -> dict:
-    """Persist a human approval request without closing the ticket."""
+    """Request approval to close a ticket without changing its status."""
 
     request = create_approval_request(
         action="close_ticket",
@@ -20,17 +20,32 @@ def request_ticket_closure(ticket_id: int) -> dict:
         requested_by="ai-agent",
     )
 
+  
     return {
-        "request_id": request["request_id"],
-        "action": request["action"],
-        "ticket_id": request["ticket_id"],
-        "status": request["status"],
+        "request_id": (
+            request["request_id"]
+            if isinstance(request, dict)
+            else request.request_id
+        ),
+        "action": (
+            request["action"]
+            if isinstance(request, dict)
+            else request.action
+        ),
+        "ticket_id": (
+            request["ticket_id"]
+            if isinstance(request, dict)
+            else request.ticket_id
+        ),
+        "status": (
+            request["status"]
+            if isinstance(request, dict)
+            else request.status
+        ),
         "message": (
             "Human approval is required before this ticket can be closed."
         ),
     }
-
-
 
 TOOLS = [
     {
@@ -82,7 +97,7 @@ AVAILABLE_FUNCTIONS = {
 def run_agent(question: str) -> str:
     """Answer questions using registered tools with bounded execution."""
 
-    if not question.strip():
+    if not isinstance(question, str) or not question.strip():
         raise ValueError("Question must not be empty.")
 
     messages = [
@@ -99,11 +114,26 @@ def run_agent(question: str) -> str:
             tools=TOOLS,
         )
 
-        assistant_message = response["message"]
+        if not isinstance(response, dict):
+            raise ValueError("Model response must be a dictionary.")
+
+        assistant_message = response.get("message")
+
+        if not isinstance(assistant_message, dict):
+            raise ValueError("Model response must include a valid message.")
+
         tool_calls = assistant_message.get("tool_calls") or []
 
+        if not isinstance(tool_calls, list):
+            raise ValueError("Tool calls must be a list.")
+
         if not tool_calls:
-            return assistant_message["content"]
+            content = assistant_message.get("content")
+
+            if not isinstance(content, str):
+                raise ValueError("Model response must include text content.")
+
+            return content
 
         # Allow at most MAX_TOOL_ROUNDS rounds of tool execution.
         if round_index == MAX_TOOL_ROUNDS:
@@ -114,8 +144,27 @@ def run_agent(question: str) -> str:
         messages.append(assistant_message)
 
         for tool_call in tool_calls:
-            tool_name = tool_call["function"]["name"]
-            arguments = tool_call["function"]["arguments"]
+            if not isinstance(tool_call, dict):
+                raise ValueError("Tool call must be a dictionary.")
+
+            function_data = tool_call.get("function")
+
+            if not isinstance(function_data, dict):
+                raise ValueError(
+                    "Tool call function must be a dictionary."
+                )
+
+            tool_name = function_data.get("name")
+
+            if not isinstance(tool_name, str) or not tool_name:
+                raise ValueError(
+                    "Tool call must include a valid function name."
+                )
+
+            if "arguments" not in function_data:
+                raise ValueError("Tool call must include arguments.")
+
+            arguments = function_data["arguments"]
 
             function_to_call = AVAILABLE_FUNCTIONS.get(tool_name)
 
@@ -145,10 +194,12 @@ def run_agent(question: str) -> str:
 
             try:
                 result = function_to_call(**arguments)
+
                 tool_result = {
                     "success": True,
                     "data": result,
                 }
+
             except Exception:
                 tool_result = {
                     "success": False,

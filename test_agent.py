@@ -3,6 +3,7 @@ import json
 from unittest.mock import Mock
 
 import agent
+import pytest
 
 
 def test_run_agent_rejects_empty_question():
@@ -362,3 +363,50 @@ def test_request_ticket_closure_rejects_invalid_ticket_id():
 
     with pytest.raises(ValueError, match="positive integer"):
         agent.request_ticket_closure(0)
+
+def test_run_agent_rejects_unregistered_tool(monkeypatch):
+    def fake_chat(**kwargs):
+        return {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "delete_all_tickets",
+                            "arguments": {"ticket_id": 1},
+                        }
+                    }
+                ],
+            }
+        }
+
+    monkeypatch.setattr(agent.ollama, "chat", fake_chat)
+
+    with pytest.raises(
+        ValueError,
+        match="Unregistered tool requested: delete_all_tickets",
+    ):
+        agent.run_agent("Delete all tickets")
+
+def test_run_agent_rejects_tool_call_missing_function_name(monkeypatch):
+    def fake_chat(**kwargs):
+        return {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "arguments": {"ticket_id": 1},
+                        }
+                    }
+                ],
+            }
+        }
+
+    monkeypatch.setattr(agent.ollama, "chat", fake_chat)
+
+    with pytest.raises(
+    ValueError,
+    match="Tool call must include a valid function name",
+):
+      agent.run_agent("Get ticket 1")
