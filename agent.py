@@ -20,7 +20,6 @@ def request_ticket_closure(ticket_id: int) -> dict:
         requested_by="ai-agent",
     )
 
-  
     return {
         "request_id": (
             request["request_id"]
@@ -46,6 +45,7 @@ def request_ticket_closure(ticket_id: int) -> dict:
             "Human approval is required before this ticket can be closed."
         ),
     }
+
 
 TOOLS = [
     {
@@ -115,12 +115,12 @@ def run_agent(question: str) -> str:
         )
 
         if not isinstance(response, dict):
-            raise ValueError("Model response must be a dictionary.")
+            return "Sorry, I received an invalid response. Please try again."
 
         assistant_message = response.get("message")
 
         if not isinstance(assistant_message, dict):
-            raise ValueError("Model response must include a valid message.")
+            return "Sorry, I received an invalid response. Please try again."
 
         tool_calls = assistant_message.get("tool_calls") or []
 
@@ -131,7 +131,9 @@ def run_agent(question: str) -> str:
             content = assistant_message.get("content")
 
             if not isinstance(content, str):
-                raise ValueError("Model response must include text content.")
+                return (
+                    "Sorry, I received an invalid response. Please try again."
+                )
 
             return content
 
