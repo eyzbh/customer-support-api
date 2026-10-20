@@ -504,3 +504,19 @@ def test_run_agent_handles_llm_connection_failure(monkeypatch):
     )
     assert "Internal provider details" not in result
 
+def test_run_agent_handles_unexpected_llm_error(monkeypatch):
+    def raise_unexpected_error(**kwargs):
+        raise RuntimeError("Internal provider implementation details")
+
+    monkeypatch.setattr(
+        agent.ollama,
+        "chat",
+        raise_unexpected_error,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Internal provider implementation details",
+    ):
+        agent.run_agent("Check ticket 1")
+
