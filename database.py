@@ -4,10 +4,12 @@ import sqlite3
 DATABASE_NAME = "support.db"
 
 
-def get_connection():
-    connection = sqlite3.connect(DATABASE_NAME)
+
+def get_connection(database_name: str = DATABASE_NAME):
+    connection = sqlite3.connect(database_name)
     connection.row_factory = sqlite3.Row
     return connection
+
 
 
 def create_tables():
