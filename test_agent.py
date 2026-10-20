@@ -278,3 +278,19 @@ def test_run_agent_handles_tool_failure(monkeypatch):
 
     assert tool_result["success"] is False
     assert "Sensitive internal database error" not in str(tool_result)
+
+def test_request_ticket_closure_creates_pending_request():
+    result = agent.request_ticket_closure(12)
+
+    assert result["action"] == "close_ticket"
+    assert result["ticket_id"] == 12
+    assert result["status"] == "pending"
+    assert result["request_id"]
+    assert "approval" in result["message"].lower()
+
+
+def test_request_ticket_closure_rejects_invalid_ticket_id():
+    import pytest
+
+    with pytest.raises(ValueError, match="positive integer"):
+        agent.request_ticket_closure(0)

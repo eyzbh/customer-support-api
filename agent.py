@@ -4,10 +4,32 @@ import json
 import ollama
 
 from agent_tools import get_ticket
+from approval_service import create_approval_request
 
 
 MODEL_NAME = "qwen3:4b-instruct"
 MAX_TOOL_ROUNDS = 5
+
+
+def request_ticket_closure(ticket_id: int) -> dict:
+    """Request approval to close a ticket without changing its status."""
+
+    request = create_approval_request(
+        action="close_ticket",
+        ticket_id=ticket_id,
+        requested_by="ai-agent",
+    )
+
+    return {
+        "request_id": request.request_id,
+        "action": request.action,
+        "ticket_id": request.ticket_id,
+        "status": request.status,
+        "message": (
+            "Human approval is required before this ticket can be closed."
+        ),
+    }
+
 
 TOOLS = [
     {
@@ -26,17 +48,38 @@ TOOLS = [
                 "required": ["ticket_id"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_ticket_closure",
+            "description": (
+                "Request human approval to close a support ticket. "
+                "Creates a pending request but does not close the ticket."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticket_id": {
+                        "type": "integer",
+                        "description": "The ID of the ticket to close.",
+                    }
+                },
+                "required": ["ticket_id"],
+            },
+        },
+    },
 ]
+
 
 AVAILABLE_FUNCTIONS = {
     "get_ticket": get_ticket,
+    "request_ticket_closure": request_ticket_closure,
 }
 
 
-
 def run_agent(question: str) -> str:
-    """Answer a question using registered tools with bounded execution."""
+    """Answer questions using registered tools with bounded execution."""
 
     if not question.strip():
         raise ValueError("Question must not be empty.")
@@ -62,7 +105,6 @@ def run_agent(question: str) -> str:
             return assistant_message["content"]
 
         # Allow at most MAX_TOOL_ROUNDS rounds of tool execution.
-        # The final model call can answer, but cannot trigger more tools.
         if round_index == MAX_TOOL_ROUNDS:
             raise RuntimeError(
                 f"Agent exceeded the maximum of {MAX_TOOL_ROUNDS} tool rounds."
@@ -81,12 +123,13 @@ def run_agent(question: str) -> str:
                     f"Unregistered tool requested: {tool_name}"
                 )
 
-            if tool_name == "get_ticket":
-                if not isinstance(arguments, dict):
-                    raise ValueError(
-                        "Tool arguments must be a dictionary."
-                    )
+            if not isinstance(arguments, dict):
+                raise ValueError("Tool arguments must be a dictionary.")
 
+            if tool_name in {
+                "get_ticket",
+                "request_ticket_closure",
+            }:
                 ticket_id = arguments.get("ticket_id")
 
                 if type(ticket_id) is not int or ticket_id < 1:
@@ -96,7 +139,7 @@ def run_agent(question: str) -> str:
 
                 if set(arguments) != {"ticket_id"}:
                     raise ValueError(
-                        "Unexpected arguments for get_ticket."
+                        f"Unexpected arguments for {tool_name}."
                     )
 
             try:
