@@ -279,14 +279,82 @@ def test_run_agent_handles_tool_failure(monkeypatch):
     assert tool_result["success"] is False
     assert "Sensitive internal database error" not in str(tool_result)
 
-def test_request_ticket_closure_creates_pending_request():
-    result = agent.request_ticket_closure(12)
+def test_request_ticket_closure_creates_pending_request(tmp_path):
+    from database import get_connection
+    from persistent_approval_service import get_approval_request
+
+    database_name = str(tmp_path / "test_support.db")
+
+    with get_connection(database_name) as connection:
+        connection.execute(
+            """
+            CREATE TABLE tickets (
+                id INTEGER PRIMARY KEY,
+                customer_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                description TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'medium',
+                status TEXT NOT NULL DEFAULT 'open'
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE approval_requests (
+                request_id TEXT PRIMARY KEY,
+                action TEXT NOT NULL,
+                ticket_id INTEGER NOT NULL,
+                requested_by TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                decided_at TEXT,
+                decided_by TEXT,
+                executed_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO tickets (
+                id, customer_name, email, subject, description
+            )
+            VALUES (12, 'Test Customer', 'test@example.com',
+                    'Test subject', 'Test description')
+            """
+        )
+
+    original_create = agent.create_approval_request
+
+    def create_test_request(action, ticket_id, requested_by):
+        return original_create(
+            action=action,
+            ticket_id=ticket_id,
+            requested_by=requested_by,
+            database_name=database_name,
+        )
+
+    agent.create_approval_request = create_test_request
+
+    try:
+        result = agent.request_ticket_closure(12)
+    finally:
+        agent.create_approval_request = original_create
+
+    saved_request = get_approval_request(
+        result["request_id"],
+        database_name=database_name,
+    )
 
     assert result["action"] == "close_ticket"
     assert result["ticket_id"] == 12
     assert result["status"] == "pending"
     assert result["request_id"]
     assert "approval" in result["message"].lower()
+
+    assert saved_request is not None
+    assert saved_request["status"] == "pending"
+    assert saved_request["requested_by"] == "ai-agent"
 
 
 def test_request_ticket_closure_rejects_invalid_ticket_id():

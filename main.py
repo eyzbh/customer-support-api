@@ -2,13 +2,20 @@
 from enum import Enum
 import logging
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
 
 from database import create_tables, get_connection
 from sentiment_service import analyze_sentiment
 from ticket_analyzer import analyze_ticket
 from rag_service import answer_question
+from persistent_approval_service import (
+    decide_approval,
+    get_approval_request,
+    list_approval_requests,
+)
+from ticket_actions import execute_approved_action
+
 logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Customer Support API",
@@ -47,6 +54,9 @@ class TicketAnalysisRequest(BaseModel):
     message: str = Field(min_length=1, max_length=5000)
 class KnowledgeQuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=5000)
+class ApprovalDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+    decided_by: str = Field(min_length=1, max_length=100)
 @app.get("/")
 def home():
     return {
@@ -210,3 +220,82 @@ def update_ticket(ticket_id: int, update: TicketUpdate):
         ).fetchone()
 
         return dict(row)
+
+@app.get("/approvals")
+def get_approvals(
+    approval_status: str | None = Query(
+        default=None,
+        alias="status",
+        pattern="^(pending|approved|rejected)$",
+    ),
+):
+    """List approval requests, optionally filtered by status."""
+
+    return list_approval_requests(status=approval_status)
+
+
+@app.get("/approvals/{request_id}")
+def get_approval(request_id: str):
+    """Retrieve one approval request."""
+
+    request = get_approval_request(request_id)
+
+    if request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Approval request not found.",
+        )
+
+    return request
+
+
+@app.post("/approvals/{request_id}/decision")
+def review_approval(
+    request_id: str,
+    decision_request: ApprovalDecisionRequest,
+):
+    """Approve or reject a pending request."""
+
+    try:
+        return decide_approval(
+            request_id=request_id,
+            decision=decision_request.decision,
+            decided_by=decision_request.decided_by,
+        )
+    except ValueError as exc:
+        message = str(exc)
+
+        if message == "Approval request not found.":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message,
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=message,
+        )
+@app.post("/approvals/{request_id}/execute")
+def execute_approval(request_id: str):
+    """Execute an approved action exactly once."""
+
+    try:
+        return execute_approved_action(request_id)
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        message = str(exc)
+
+        if message == "Approval request not found.":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=message,
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=message,
+        )

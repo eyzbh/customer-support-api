@@ -4,7 +4,7 @@ import json
 import ollama
 
 from agent_tools import get_ticket
-from approval_service import create_approval_request
+from persistent_approval_service import create_approval_request
 
 
 MODEL_NAME = "qwen3:4b-instruct"
@@ -12,7 +12,7 @@ MAX_TOOL_ROUNDS = 5
 
 
 def request_ticket_closure(ticket_id: int) -> dict:
-    """Request approval to close a ticket without changing its status."""
+    """Persist a human approval request without closing the ticket."""
 
     request = create_approval_request(
         action="close_ticket",
@@ -21,14 +21,15 @@ def request_ticket_closure(ticket_id: int) -> dict:
     )
 
     return {
-        "request_id": request.request_id,
-        "action": request.action,
-        "ticket_id": request.ticket_id,
-        "status": request.status,
+        "request_id": request["request_id"],
+        "action": request["action"],
+        "ticket_id": request["ticket_id"],
+        "status": request["status"],
         "message": (
             "Human approval is required before this ticket can be closed."
         ),
     }
+
 
 
 TOOLS = [
