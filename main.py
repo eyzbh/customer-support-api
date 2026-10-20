@@ -2,7 +2,14 @@
 from enum import Enum
 import logging
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    status,
+)
+from auth import require_api_key
 from pydantic import BaseModel, EmailStr, Field
 
 from database import create_tables, get_connection
@@ -17,6 +24,7 @@ from persistent_approval_service import (
 from ticket_actions import execute_approved_action
 
 logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="Customer Support API",
     description="An API for managing customer support tickets.",
@@ -48,15 +56,24 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     status: TicketStatus
 
+
 class SentimentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
+
+
 class TicketAnalysisRequest(BaseModel):
     message: str = Field(min_length=1, max_length=5000)
+
+
 class KnowledgeQuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=5000)
+
+
 class ApprovalDecisionRequest(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     decided_by: str = Field(min_length=1, max_length=100)
+
+
 @app.get("/")
 def home():
     return {
@@ -68,7 +85,6 @@ def home():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
 
 
 @app.post(
@@ -89,7 +105,6 @@ def health_check():
         }
     },
 )
-
 def predict_sentiment(request: SentimentRequest):
     try:
         result = analyze_sentiment(request.text)
@@ -125,6 +140,8 @@ def analyze_support_ticket(request: TicketAnalysisRequest):
         )
 
     return result
+
+
 @app.post(
     "/ask-knowledge",
     responses={
@@ -144,7 +161,15 @@ def ask_knowledge(request: KnowledgeQuestionRequest):
         )
 
     return result
-@app.post("/tickets", status_code=status.HTTP_201_CREATED)
+
+
+# Ticket endpoints: all require a valid API key.
+
+@app.post(
+    "/tickets",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_api_key)],
+)
 def create_ticket(ticket: TicketCreate):
     with get_connection() as connection:
         cursor = connection.execute(
@@ -173,7 +198,10 @@ def create_ticket(ticket: TicketCreate):
         return dict(row)
 
 
-@app.get("/tickets")
+@app.get(
+    "/tickets",
+    dependencies=[Depends(require_api_key)],
+)
 def get_tickets():
     with get_connection() as connection:
         rows = connection.execute(
@@ -183,7 +211,10 @@ def get_tickets():
         return [dict(row) for row in rows]
 
 
-@app.get("/tickets/{ticket_id}")
+@app.get(
+    "/tickets/{ticket_id}",
+    dependencies=[Depends(require_api_key)],
+)
 def get_ticket(ticket_id: int):
     with get_connection() as connection:
         row = connection.execute(
@@ -200,7 +231,10 @@ def get_ticket(ticket_id: int):
         return dict(row)
 
 
-@app.patch("/tickets/{ticket_id}")
+@app.patch(
+    "/tickets/{ticket_id}",
+    dependencies=[Depends(require_api_key)],
+)
 def update_ticket(ticket_id: int, update: TicketUpdate):
     with get_connection() as connection:
         cursor = connection.execute(
@@ -221,7 +255,13 @@ def update_ticket(ticket_id: int, update: TicketUpdate):
 
         return dict(row)
 
-@app.get("/approvals")
+
+# Approval endpoints: all require a valid API key.
+
+@app.get(
+    "/approvals",
+    dependencies=[Depends(require_api_key)],
+)
 def get_approvals(
     approval_status: str | None = Query(
         default=None,
@@ -230,14 +270,15 @@ def get_approvals(
     ),
 ):
     """List approval requests, optionally filtered by status."""
-
     return list_approval_requests(status=approval_status)
 
 
-@app.get("/approvals/{request_id}")
+@app.get(
+    "/approvals/{request_id}",
+    dependencies=[Depends(require_api_key)],
+)
 def get_approval(request_id: str):
     """Retrieve one approval request."""
-
     request = get_approval_request(request_id)
 
     if request is None:
@@ -249,13 +290,15 @@ def get_approval(request_id: str):
     return request
 
 
-@app.post("/approvals/{request_id}/decision")
+@app.post(
+    "/approvals/{request_id}/decision",
+    dependencies=[Depends(require_api_key)],
+)
 def review_approval(
     request_id: str,
     decision_request: ApprovalDecisionRequest,
 ):
     """Approve or reject a pending request."""
-
     try:
         return decide_approval(
             request_id=request_id,
@@ -275,10 +318,14 @@ def review_approval(
             status_code=status.HTTP_409_CONFLICT,
             detail=message,
         )
-@app.post("/approvals/{request_id}/execute")
+
+
+@app.post(
+    "/approvals/{request_id}/execute",
+    dependencies=[Depends(require_api_key)],
+)
 def execute_approval(request_id: str):
     """Execute an approved action exactly once."""
-
     try:
         return execute_approved_action(request_id)
     except PermissionError as exc:

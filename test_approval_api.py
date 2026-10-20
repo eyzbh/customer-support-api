@@ -87,7 +87,15 @@ def client_with_approval_database(tmp_path, monkeypatch):
         ),
     )
 
-    return TestClient(main.app), database_name
+    # Use a test-only API key. Never use a production secret in tests.
+    monkeypatch.setenv("SUPPORT_API_KEY", "test-secret-key")
+
+    client = TestClient(main.app)
+    client.headers.update(
+        {"Authorization": "Bearer test-secret-key"}
+    )
+
+    return client, database_name
 
 
 def create_pending_request(database_name):
@@ -328,3 +336,17 @@ def test_execute_unknown_approval_returns_404(
     )
 
     assert response.status_code == 404
+
+
+def test_list_approvals_requires_authentication(
+    client_with_approval_database,
+):
+    client, _ = client_with_approval_database
+
+    # Remove the valid test credential for this request.
+    response = client.get(
+        "/approvals",
+        headers={"Authorization": ""},
+    )
+
+    assert response.status_code == 401

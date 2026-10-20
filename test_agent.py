@@ -1,7 +1,6 @@
 
 import json
 from unittest.mock import Mock
-
 import agent
 import pytest
 
@@ -283,6 +282,7 @@ def test_run_agent_handles_tool_failure(monkeypatch):
 def test_request_ticket_closure_creates_pending_request(tmp_path):
     from database import get_connection
     from persistent_approval_service import get_approval_request
+    from agent_tools import get_ticket
 
     database_name = str(tmp_path / "test_support.db")
 
@@ -356,7 +356,17 @@ def test_request_ticket_closure_creates_pending_request(tmp_path):
     assert saved_request is not None
     assert saved_request["status"] == "pending"
     assert saved_request["requested_by"] == "ai-agent"
+    assert saved_request is not None
+    assert saved_request["status"] == "pending"
+    assert saved_request["requested_by"] == "ai-agent"
 
+    with get_connection(database_name) as connection:
+        ticket_after_request = connection.execute(
+            "SELECT status FROM tickets WHERE id = ?",
+            (12,),
+        ).fetchone()
+
+    assert ticket_after_request["status"] == "open"
 
 def test_request_ticket_closure_rejects_invalid_ticket_id():
     import pytest
@@ -519,4 +529,25 @@ def test_run_agent_handles_unexpected_llm_error(monkeypatch):
         match="Internal provider implementation details",
     ):
         agent.run_agent("Check ticket 1")
+
+def test_run_agent_handles_ollama_response_error(monkeypatch):
+    def raise_response_error(**kwargs):
+        raise agent.ollama.ResponseError(
+            "Sensitive provider details",
+            status_code=500,
+        )
+
+    monkeypatch.setattr(
+        agent.ollama,
+        "chat",
+        raise_response_error,
+    )
+
+    result = agent.run_agent("Check ticket 1")
+
+    assert result == (
+        "Sorry, the AI service is temporarily unavailable. "
+        "Please try again later."
+    )
+    assert "Sensitive provider details" not in result
 

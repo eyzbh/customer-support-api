@@ -1,13 +1,22 @@
 
-import pytest
+import os
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
+
+# Set a test-only API key before importing the application.
+os.environ["SUPPORT_API_KEY"] = "test-secret-key"
 
 from main import app
 from database import get_connection
-from pydantic import ValidationError
+
 
 client = TestClient(app)
+client.headers.update(
+    {"Authorization": "Bearer test-secret-key"}
+)
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +42,9 @@ def test_create_ticket():
             "customer_name": "Abebe Bekele",
             "email": "abebe@example.com",
             "subject": "Cannot log in",
-            "description": "I cannot access my account after resetting my password.",
+            "description": (
+                "I cannot access my account after resetting my password."
+            ),
             "priority": "high",
         },
     )
@@ -50,10 +61,14 @@ def test_get_ticket():
             "customer_name": "Abebe Bekele",
             "email": "abebe@example.com",
             "subject": "Cannot log in",
-            "description": "I cannot access my account after resetting my password.",
+            "description": (
+                "I cannot access my account after resetting my password."
+            ),
             "priority": "high",
         },
     )
+
+    assert create_response.status_code == 201
 
     ticket_id = create_response.json()["id"]
     response = client.get(f"/tickets/{ticket_id}")
@@ -69,10 +84,14 @@ def test_close_ticket():
             "customer_name": "Abebe Bekele",
             "email": "abebe@example.com",
             "subject": "Cannot log in",
-            "description": "I cannot access my account after resetting my password.",
+            "description": (
+                "I cannot access my account after resetting my password."
+            ),
             "priority": "high",
         },
     )
+
+    assert create_response.status_code == 201
 
     ticket_id = create_response.json()["id"]
     response = client.patch(
@@ -98,12 +117,15 @@ def test_invalid_email():
             "customer_name": "Abebe Bekele",
             "email": "not-an-email",
             "subject": "Cannot log in",
-            "description": "I cannot access my account after resetting my password.",
+            "description": (
+                "I cannot access my account after resetting my password."
+            ),
             "priority": "high",
         },
     )
 
     assert response.status_code == 422
+
 
 def test_sentiment_endpoint():
     with patch(
@@ -133,6 +155,7 @@ def test_sentiment_endpoint_rejects_empty_text():
 
     assert response.status_code == 422
 
+
 def test_sentiment_endpoint_handles_model_failure():
     with patch(
         "main.analyze_sentiment",
@@ -147,6 +170,7 @@ def test_sentiment_endpoint_handles_model_failure():
     assert response.json() == {
         "detail": "Sentiment analysis is temporarily unavailable."
     }
+
 
 def test_analyze_ticket_endpoint():
     with patch(
@@ -171,6 +195,7 @@ def test_analyze_ticket_endpoint():
         "suggested_reply": "We will review the duplicate charge.",
     }
 
+
 def test_analyze_ticket_handles_model_failure(caplog):
     with patch(
         "main.analyze_ticket",
@@ -185,6 +210,8 @@ def test_analyze_ticket_handles_model_failure(caplog):
     assert response.json() == {
         "detail": "Ticket analysis is temporarily unavailable."
     }
+    assert "Ticket analysis failed." in caplog.text
+
 
 def test_analyze_ticket_rejects_empty_message():
     response = client.post(
@@ -194,6 +221,7 @@ def test_analyze_ticket_rejects_empty_message():
 
     assert response.status_code == 422
 
+
 def test_analyze_ticket_rejects_message_over_5000_characters():
     response = client.post(
         "/analyze-ticket",
@@ -201,6 +229,7 @@ def test_analyze_ticket_rejects_message_over_5000_characters():
     )
 
     assert response.status_code == 422
+
 
 def test_ticket_analysis_rejects_invalid_priority():
     from ticket_analyzer import TicketAnalysis
@@ -211,3 +240,51 @@ def test_ticket_analysis_rejects_invalid_priority():
             priority="urgent",
             suggested_reply="We will investigate the issue.",
         )
+
+
+# Authentication tests for ticket endpoints.
+
+def test_list_tickets_requires_authentication():
+    response = client.get(
+        "/tickets",
+        headers={"Authorization": ""},
+    )
+
+    assert response.status_code == 401
+
+
+def test_create_ticket_requires_authentication():
+    response = client.post(
+        "/tickets",
+        headers={"Authorization": ""},
+        json={
+            "customer_name": "Abebe Bekele",
+            "email": "abebe@example.com",
+            "subject": "Cannot log in",
+            "description": (
+                "I cannot access my account after resetting my password."
+            ),
+            "priority": "high",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_get_ticket_requires_authentication():
+    response = client.get(
+        "/tickets/1",
+        headers={"Authorization": ""},
+    )
+
+    assert response.status_code == 401
+
+
+def test_update_ticket_requires_authentication():
+    response = client.patch(
+        "/tickets/1",
+        headers={"Authorization": ""},
+        json={"status": "closed"},
+    )
+
+    assert response.status_code == 401
