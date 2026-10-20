@@ -410,3 +410,65 @@ def test_run_agent_rejects_tool_call_missing_function_name(monkeypatch):
     match="Tool call must include a valid function name",
 ):
       agent.run_agent("Get ticket 1")
+      
+def test_run_agent_uses_tool_result_in_final_response(monkeypatch):
+    first_response = {
+        "message": {
+            "content": "",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "get_ticket",
+                        "arguments": {"ticket_id": 1},
+                    }
+                }
+            ],
+        }
+    }
+
+    final_response = {
+        "message": {
+            "content": "Ticket 1 is open and has high priority.",
+            "tool_calls": [],
+        }
+    }
+
+    fake_chat = Mock(
+        side_effect=[first_response, final_response]
+    )
+
+    fake_get_ticket = Mock(
+        return_value={
+            "id": 1,
+            "status": "open",
+            "priority": "high",
+        }
+    )
+
+    monkeypatch.setattr(agent.ollama, "chat", fake_chat)
+    monkeypatch.setitem(
+        agent.AVAILABLE_FUNCTIONS,
+        "get_ticket",
+        fake_get_ticket,
+    )
+
+    result = agent.run_agent("Check ticket 1")
+
+    assert result == "Ticket 1 is open and has high priority."
+    assert fake_chat.call_count == 2
+
+    second_call_messages = fake_chat.call_args_list[1].kwargs["messages"]
+
+    tool_messages = [
+        message
+        for message in second_call_messages
+        if message.get("role") == "tool"
+    ]
+
+    assert len(tool_messages) == 1
+
+    tool_result = json.loads(tool_messages[0]["content"])
+
+    assert tool_result["success"] is True
+    assert tool_result["data"]["status"] == "open"
+    assert tool_result["data"]["priority"] == "high"
