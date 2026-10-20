@@ -226,7 +226,7 @@ def test_run_agent_stops_after_maximum_tool_rounds(monkeypatch):
         raise AssertionError("Expected RuntimeError")
 
     assert fake_chat.call_count == agent.MAX_TOOL_ROUNDS + 1
-    assert fake_get_ticket.call_count == agent.MAX_TOOL_ROUNDS + 1
+    assert fake_get_ticket.call_count == agent.MAX_TOOL_ROUNDS
 
 
 def test_run_agent_handles_tool_failure(monkeypatch):

@@ -34,6 +34,7 @@ AVAILABLE_FUNCTIONS = {
 }
 
 
+
 def run_agent(question: str) -> str:
     """Answer a question using registered tools with bounded execution."""
 
@@ -47,7 +48,7 @@ def run_agent(question: str) -> str:
         }
     ]
 
-    for _ in range(MAX_TOOL_ROUNDS + 1):
+    for round_index in range(MAX_TOOL_ROUNDS + 1):
         response = ollama.chat(
             model=MODEL_NAME,
             messages=messages,
@@ -59,6 +60,13 @@ def run_agent(question: str) -> str:
 
         if not tool_calls:
             return assistant_message["content"]
+
+        # Allow at most MAX_TOOL_ROUNDS rounds of tool execution.
+        # The final model call can answer, but cannot trigger more tools.
+        if round_index == MAX_TOOL_ROUNDS:
+            raise RuntimeError(
+                f"Agent exceeded the maximum of {MAX_TOOL_ROUNDS} tool rounds."
+            )
 
         messages.append(assistant_message)
 
