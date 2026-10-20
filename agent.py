@@ -108,19 +108,29 @@ def run_agent(question: str) -> str:
     ]
 
     for round_index in range(MAX_TOOL_ROUNDS + 1):
-        response = ollama.chat(
-            model=MODEL_NAME,
-            messages=messages,
-            tools=TOOLS,
-        )
+        try:
+            response = ollama.chat(
+                model=MODEL_NAME,
+                messages=messages,
+                tools=TOOLS,
+            )
+        except (ConnectionError, ollama.ResponseError):
+            return (
+                "Sorry, the AI service is temporarily unavailable. "
+                "Please try again later."
+            )
 
         if not isinstance(response, dict):
-            return "Sorry, I received an invalid response. Please try again."
+            return (
+                "Sorry, I received an invalid response. Please try again."
+            )
 
         assistant_message = response.get("message")
 
         if not isinstance(assistant_message, dict):
-            return "Sorry, I received an invalid response. Please try again."
+            return (
+                "Sorry, I received an invalid response. Please try again."
+            )
 
         tool_calls = assistant_message.get("tool_calls") or []
 
@@ -140,7 +150,8 @@ def run_agent(question: str) -> str:
         # Allow at most MAX_TOOL_ROUNDS rounds of tool execution.
         if round_index == MAX_TOOL_ROUNDS:
             raise RuntimeError(
-                f"Agent exceeded the maximum of {MAX_TOOL_ROUNDS} tool rounds."
+                f"Agent exceeded the maximum of "
+                f"{MAX_TOOL_ROUNDS} tool rounds."
             )
 
         messages.append(assistant_message)

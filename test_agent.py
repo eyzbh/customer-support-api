@@ -485,9 +485,10 @@ def test_run_agent_handles_malformed_llm_response(monkeypatch):
     assert isinstance(result, str)
     assert result
 
+
 def test_run_agent_handles_llm_connection_failure(monkeypatch):
     def raise_connection_error(**kwargs):
-        raise ConnectionError("Ollama is unavailable")
+        raise ConnectionError("Internal provider details")
 
     monkeypatch.setattr(
         agent.ollama,
@@ -495,5 +496,11 @@ def test_run_agent_handles_llm_connection_failure(monkeypatch):
         raise_connection_error,
     )
 
-    with pytest.raises(ConnectionError, match="Ollama is unavailable"):
-        agent.run_agent("Check ticket 1")
+    result = agent.run_agent("Check ticket 1")
+
+    assert result == (
+        "Sorry, the AI service is temporarily unavailable. "
+        "Please try again later."
+    )
+    assert "Internal provider details" not in result
+
