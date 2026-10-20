@@ -472,3 +472,28 @@ def test_run_agent_uses_tool_result_in_final_response(monkeypatch):
     assert tool_result["success"] is True
     assert tool_result["data"]["status"] == "open"
     assert tool_result["data"]["priority"] == "high"
+
+def test_run_agent_handles_malformed_llm_response(monkeypatch):
+    monkeypatch.setattr(
+        agent.ollama,
+        "chat",
+        Mock(return_value={"unexpected": "response"}),
+    )
+
+    result = agent.run_agent("Check ticket 1")
+
+    assert isinstance(result, str)
+    assert result
+
+def test_run_agent_handles_llm_connection_failure(monkeypatch):
+    def raise_connection_error(**kwargs):
+        raise ConnectionError("Ollama is unavailable")
+
+    monkeypatch.setattr(
+        agent.ollama,
+        "chat",
+        raise_connection_error,
+    )
+
+    with pytest.raises(ConnectionError, match="Ollama is unavailable"):
+        agent.run_agent("Check ticket 1")
