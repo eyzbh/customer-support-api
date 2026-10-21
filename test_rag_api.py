@@ -58,3 +58,19 @@ def test_ask_knowledge_handles_model_failure():
     assert response.json() == {
         "detail": "Knowledge service is temporarily unavailable."
     }
+def test_ask_knowledge_rate_limit():
+    from fastapi.testclient import TestClient
+    import main
+
+    client = TestClient(main.app)
+
+    # Send requests until the configured limit is exceeded.
+    responses = [
+        client.post(
+            "/ask-knowledge",
+            json={"question": "What is the refund policy?"},
+        )
+        for _ in range(11)
+    ]
+
+    assert any(response.status_code == 429 for response in responses)

@@ -7,6 +7,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     status,
 )
 from auth import require_api_key, require_reviewer
@@ -22,6 +23,9 @@ from persistent_approval_service import (
     list_approval_requests,
 )
 from ticket_actions import execute_approved_action
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,13 @@ app = FastAPI(
     description="An API for managing customer support tickets.",
     version="1.0.0",
 )
+limiter = Limiter(key_func=get_remote_address)
 
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler,
+)
 create_tables()
 
 
@@ -141,8 +151,6 @@ def analyze_support_ticket(request: TicketAnalysisRequest):
         )
 
     return result
-
-
 @app.post(
     "/ask-knowledge",
     responses={
@@ -151,9 +159,13 @@ def analyze_support_ticket(request: TicketAnalysisRequest):
         }
     },
 )
-def ask_knowledge(request: KnowledgeQuestionRequest):
+@limiter.limit("10/minute")
+def ask_knowledge(
+    request: Request,
+    question_request: KnowledgeQuestionRequest,
+):
     try:
-        result = answer_question(request.question)
+        result = answer_question(question_request.question)
     except Exception:
         logger.exception("Knowledge question failed.")
         raise HTTPException(
@@ -162,7 +174,6 @@ def ask_knowledge(request: KnowledgeQuestionRequest):
         )
 
     return result
-
 
 # Ticket endpoints: all require a valid API key.
 
