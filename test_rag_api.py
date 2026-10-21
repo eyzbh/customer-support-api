@@ -4,9 +4,20 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from main import app
+import main
 
 
 client = TestClient(app)
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit():
+    main.limiter.reset()
+    yield
+    main.limiter.reset()
+
 
 
 def test_ask_knowledge_returns_answer_and_sources():
@@ -74,3 +85,22 @@ def test_ask_knowledge_rate_limit():
     ]
 
     assert any(response.status_code == 429 for response in responses)
+    
+def test_ask_knowledge_does_not_expose_internal_errors():
+    with patch(
+        "main.answer_question",
+        side_effect=RuntimeError(
+            "Database password=secret123; internal server path"
+        ),
+    ):
+        response = client.post(
+            "/ask-knowledge",
+            json={"question": "What is the refund policy?"},
+        )
+
+    assert response.status_code == 503
+    assert "secret123" not in response.text
+    assert "internal server path" not in response.text
+    assert response.json() == {
+        "detail": "Knowledge service is temporarily unavailable."
+    }
