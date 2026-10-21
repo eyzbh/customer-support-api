@@ -1,0 +1,9 @@
+
+fastapi[standard]
+email-validator
+httpx
+pytest
+transformers
+torch
+ollama
+slowapi==0.1.10
