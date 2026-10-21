@@ -10,7 +10,7 @@ from fastapi import (
     status,
 )
 from auth import require_api_key, require_reviewer
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from database import create_tables, get_connection
 from sentiment_service import analyze_sentiment
@@ -70,6 +70,8 @@ class KnowledgeQuestionRequest(BaseModel):
 
 
 class ApprovalDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     decision: str = Field(pattern="^(approved|rejected)$")
 
 
@@ -288,11 +290,7 @@ def get_approval(request_id: str):
 
     return request
 
-
-@app.post(
-    "/approvals/{request_id}/decision",
-    dependencies=[Depends(require_reviewer)],
-)
+@app.post("/approvals/{request_id}/decision")
 def review_approval(
     request_id: str,
     decision_request: ApprovalDecisionRequest,
@@ -319,13 +317,12 @@ def review_approval(
             detail=message,
         )
 
-
-@app.post(
-    "/approvals/{request_id}/execute",
-    dependencies=[Depends(require_api_key)],
-)
-def execute_approval(request_id: str):
-    """Execute an approved action exactly once."""
+@app.post("/approvals/{request_id}/execute")
+def execute_approval(
+    request_id: str,
+    reviewer: str = Depends(require_reviewer),
+):
+    """Execute an approved action exactly once; reviewers only."""
     try:
         return execute_approved_action(request_id)
     except PermissionError as exc:

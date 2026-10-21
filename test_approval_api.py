@@ -174,7 +174,29 @@ def test_approve_request(client_with_approval_database):
     assert response.status_code == 200
     assert response.json()["status"] == "approved"
     assert response.json()["decided_by"] == "reviewer-1"
+def test_extra_decided_by_field_is_rejected(
+    client_with_approval_database,
+):
+    client, database_name = client_with_approval_database
+    request = create_pending_request(database_name)
 
+    response = client.post(
+        f"/approvals/{request['request_id']}/decision",
+        json={
+            "decision": "approved",
+            "decided_by": "fake-reviewer",
+        },
+    )
+
+    assert response.status_code == 422
+
+    from persistent_approval_service import get_approval_request
+
+    saved_request = get_approval_request(
+        request["request_id"], database_name
+    )
+    assert saved_request["status"] == "pending"
+    assert saved_request["decided_by"] is None
 
 def test_reject_request(client_with_approval_database):
     client, database_name = client_with_approval_database
@@ -374,3 +396,31 @@ def test_list_approvals_requires_authentication(
     )
 
     assert response.status_code == 401
+def test_non_reviewer_cannot_execute_approved_request(
+    client_with_approval_database,
+):
+    client, database_name = client_with_approval_database
+    request = create_pending_request(database_name)
+
+    # A reviewer approves the request.
+    decision_response = client.post(
+        f"/approvals/{request['request_id']}/decision",
+        json={"decision": "approved"},
+    )
+    assert decision_response.status_code == 200
+
+    # A regular support agent tries to execute it.
+    response = client.post(
+        f"/approvals/{request['request_id']}/execute",
+        headers={"Authorization": "Bearer agent-test-key"},
+    )
+
+    assert response.status_code == 403
+
+    from persistent_approval_service import get_approval_request
+
+    saved_request = get_approval_request(
+        request["request_id"], database_name
+    )
+    assert saved_request["status"] == "approved"
+    assert saved_request["executed_at"] is None
