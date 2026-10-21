@@ -1,15 +1,15 @@
 
 from enum import Enum
 import logging
-
 from fastapi import (
     Depends,
     FastAPI,
+    Header,
     HTTPException,
     Query,
     status,
 )
-from auth import require_api_key
+from auth import require_api_key, require_reviewer
 from pydantic import BaseModel, EmailStr, Field
 
 from database import create_tables, get_connection
@@ -71,7 +71,6 @@ class KnowledgeQuestionRequest(BaseModel):
 
 class ApprovalDecisionRequest(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
-    decided_by: str = Field(min_length=1, max_length=100)
 
 
 @app.get("/")
@@ -292,18 +291,19 @@ def get_approval(request_id: str):
 
 @app.post(
     "/approvals/{request_id}/decision",
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_reviewer)],
 )
 def review_approval(
     request_id: str,
     decision_request: ApprovalDecisionRequest,
+    reviewer: str = Depends(require_reviewer),
 ):
     """Approve or reject a pending request."""
     try:
         return decide_approval(
             request_id=request_id,
             decision=decision_request.decision,
-            decided_by=decision_request.decided_by,
+            decided_by=reviewer,
         )
     except ValueError as exc:
         message = str(exc)

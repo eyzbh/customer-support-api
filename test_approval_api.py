@@ -53,28 +53,32 @@ def client_with_approval_database(tmp_path, monkeypatch):
             ("API Test", "api@example.com", "Test ticket", "Test description"),
         )
 
-    persistent_service = __import__("persistent_approval_service")
-    ticket_actions = __import__("ticket_actions")
+    import persistent_approval_service
+    import ticket_actions
 
     monkeypatch.setattr(
         main,
         "list_approval_requests",
-        lambda status=None: persistent_service.list_approval_requests(
-            status, database_name
+        lambda status=None: (
+            persistent_approval_service.list_approval_requests(
+                status, database_name
+            )
         ),
     )
     monkeypatch.setattr(
         main,
         "get_approval_request",
-        lambda request_id: persistent_service.get_approval_request(
-            request_id, database_name
+        lambda request_id: (
+            persistent_approval_service.get_approval_request(
+                request_id, database_name
+            )
         ),
     )
     monkeypatch.setattr(
         main,
         "decide_approval",
         lambda request_id, decision, decided_by: (
-            persistent_service.decide_approval(
+            persistent_approval_service.decide_approval(
                 request_id, decision, decided_by, database_name
             )
         ),
@@ -87,12 +91,17 @@ def client_with_approval_database(tmp_path, monkeypatch):
         ),
     )
 
-    # Use a test-only API key. Never use a production secret in tests.
-    monkeypatch.setenv("SUPPORT_API_KEY", "test-secret-key")
+    # Configure distinct test identities and roles.
+    monkeypatch.delenv("SUPPORT_API_KEY", raising=False)
+    monkeypatch.setenv(
+        "SUPPORT_API_USERS",
+        "reviewer-test-key:reviewer-1,agent-test-key:support-agent",
+    )
+    monkeypatch.setenv("SUPPORT_API_REVIEWERS", "reviewer-1")
 
     client = TestClient(main.app)
     client.headers.update(
-        {"Authorization": "Bearer test-secret-key"}
+        {"Authorization": "Bearer reviewer-test-key"}
     )
 
     return client, database_name
@@ -159,10 +168,7 @@ def test_approve_request(client_with_approval_database):
 
     response = client.post(
         f"/approvals/{request['request_id']}/decision",
-        json={
-            "decision": "approved",
-            "decided_by": "reviewer-1",
-        },
+        json={"decision": "approved"},
     )
 
     assert response.status_code == 200
@@ -176,14 +182,35 @@ def test_reject_request(client_with_approval_database):
 
     response = client.post(
         f"/approvals/{request['request_id']}/decision",
-        json={
-            "decision": "rejected",
-            "decided_by": "reviewer-1",
-        },
+        json={"decision": "rejected"},
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "rejected"
+    assert response.json()["decided_by"] == "reviewer-1"
+
+
+def test_non_reviewer_cannot_decide_approval(
+    client_with_approval_database,
+):
+    client, database_name = client_with_approval_database
+    request = create_pending_request(database_name)
+
+    response = client.post(
+        f"/approvals/{request['request_id']}/decision",
+        headers={"Authorization": "Bearer agent-test-key"},
+        json={"decision": "approved"},
+    )
+
+    assert response.status_code == 403
+
+    from persistent_approval_service import get_approval_request
+
+    saved_request = get_approval_request(
+        request["request_id"], database_name
+    )
+    assert saved_request["status"] == "pending"
+    assert saved_request["decided_by"] is None
 
 
 def test_invalid_decision_is_rejected(client_with_approval_database):
@@ -192,10 +219,7 @@ def test_invalid_decision_is_rejected(client_with_approval_database):
 
     response = client.post(
         f"/approvals/{request['request_id']}/decision",
-        json={
-            "decision": "maybe",
-            "decided_by": "reviewer-1",
-        },
+        json={"decision": "maybe"},
     )
 
     assert response.status_code == 422
@@ -210,11 +234,11 @@ def test_deciding_request_twice_returns_conflict(
 
     first_response = client.post(
         url,
-        json={"decision": "approved", "decided_by": "reviewer-1"},
+        json={"decision": "approved"},
     )
     second_response = client.post(
         url,
-        json={"decision": "rejected", "decided_by": "reviewer-2"},
+        json={"decision": "rejected"},
     )
 
     assert first_response.status_code == 200
@@ -249,7 +273,7 @@ def test_execute_rejected_approval_is_forbidden(
 
     decision_response = client.post(
         f"/approvals/{request['request_id']}/decision",
-        json={"decision": "rejected", "decided_by": "reviewer-1"},
+        json={"decision": "rejected"},
     )
     assert decision_response.status_code == 200
 
@@ -275,7 +299,7 @@ def test_execute_approved_request_closes_ticket(
 
     decision_response = client.post(
         f"/approvals/{request['request_id']}/decision",
-        json={"decision": "approved", "decided_by": "reviewer-1"},
+        json={"decision": "approved"},
     )
     assert decision_response.status_code == 200
 
@@ -310,10 +334,11 @@ def test_executing_approval_twice_returns_conflict(
     client, database_name = client_with_approval_database
     request = create_pending_request(database_name)
 
-    client.post(
+    decision_response = client.post(
         f"/approvals/{request['request_id']}/decision",
-        json={"decision": "approved", "decided_by": "reviewer-1"},
+        json={"decision": "approved"},
     )
+    assert decision_response.status_code == 200
 
     first_response = client.post(
         f"/approvals/{request['request_id']}/execute"
@@ -343,7 +368,6 @@ def test_list_approvals_requires_authentication(
 ):
     client, _ = client_with_approval_database
 
-    # Remove the valid test credential for this request.
     response = client.get(
         "/approvals",
         headers={"Authorization": ""},
